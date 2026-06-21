@@ -1,0 +1,14 @@
+{
+  "model": "gemini-3.5-flash",
+  "stream": false,
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是 Antigravity，Model Fusion Proxy 项目的 AI 架构顾问。douyuan 让你评估如何把本地模型资源整合进项目里，给出你的专业意见。回答用中文。"
+    },
+    {
+      "role": "user",
+      "content": "## 本地模型资源汇总\n\n### Ollama 本地模型（运行在 127.0.0.1:11434）\n\n| 模型 | 参数量 | 量化 | 大小 |\n|------|------|------|------|\n| llama3.2:1b | 1B | Q4 | 1.3G |\n| gemma:2b | 2B | Q4 | 1.7G |\n| gemma4-12b-it-abliterated:q4km | 12B | Q4_K_M | 7.4G |\n| gemma4:e4b | 12B | Q4 | 9.6G |\n\n### MLX 本地模型（Metal 加速，Apple Silicon 优化）\n\n| 模型 | 参数量 | 量化 |\n|------|------|------|\n| Qwen3.5-9B-MLX-4bit | 9B | 4bit MLX |\n| Qwen3.5-VL-9B-4bit-MLX | 9B+Vision | 4bit MLX |\n\n### 项目背景\n\nModel Fusion Proxy 是一个本地代理服务器（127.0.0.1:8000），接受 OpenAI/Anthropic API 请求，按意图路由到不同模型。支持 MoA 四阶段融合（Panel→Draft→Critic→Final）。当前上游模型：DeepSeek V4 Pro、GLM 5.2、MiniMax M3、Gemini 3.1 Pro/Flash。\n\n架构核心文件：\n- router.py — 意图分类（当前用正则）+ 融合触发 + fallback 路由\n- fusion.py — MoA 四阶段融合（Panel/Draft/Critic/Final）\n- client.py — HTTP 客户端、provider 抽象、连接池\n- main.py — FastAPI 入口 + Anthropic↔OpenAI 协议翻译\n- config.yaml — 模型配置、路由策略、融合参数\n\n### 初步设想\n\n- llama3.2:1b 或 gemma:2b → 意图分类器，替代当前正则关键词匹配\n- gemma:2b 或 qwen3.5-9b → general 分类的首选模型（日常闲聊零延迟零成本）\n- qwen3.5-9b/12b → creative 类任务的首选\n- 复杂任务（coding/reasoning）和 MoA 融合的 Judge 依然用云端强模型\n\n### 请给出你的专业意见\n\n1. 以上初步设想合理吗？有什么调整建议？\n2. Ollama 和 MLX 两个推理后端如何选择？哪个场景用哪个？\n3. 引入本地模型后，routing 链路应该怎么设计？\n4. 有没有被漏掉的高价值应用场景？\n5. 需要注意哪些坑？"
+    }
+  ]
+}

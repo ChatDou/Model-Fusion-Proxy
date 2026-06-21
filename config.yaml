@@ -1,0 +1,152 @@
+# Model Fusion Proxy Configuration
+
+server:
+  host: "127.0.0.1"
+  port: 8000
+  timeout_seconds: 60
+
+# ─── Local Model Providers (Apple Silicon) ──────────────────────────────
+# Ollama: light 1B-2B background service, OpenAI-compatible at port 11434
+# MLX: 9B-12B main local models, Metal-accelerated, OpenAI-compatible
+local:
+  ollama:
+    base_url: "http://127.0.0.1:11434/v1"
+    api_key: "ollama"  # Ollama doesn't require auth locally
+    models:
+      llama_1b: "llama3.2:1b"
+      gemma_2b: "gemma:2b"
+      gemma4_12b: "gemma4-12b-it-abliterated:q4km"
+      gemma4_12b_alt: "gemma4:e4b"
+    keepalive: "5m"       # Unload idle models after 5 min to free UMA
+    num_parallel: 1         # Serial execution to avoid UMA contention
+  mlx:
+    base_url: "http://127.0.0.1:8080/v1"  # mlx_lm.server default port
+    api_key: "mlx"    # MLX server doesn't require auth locally
+    models:
+      qwen35_9b: "/Users/douyuan/Documents/Codex/2026-06-04/gemma-4-12b-it-abliterated-gguf/work/models/omlx/Qwen3.5-9B-MLX-4bit"
+      qwen35_vl: "dealignai/Qwen3.5-VL-9B-4bit-MLX-CRACK"  # Vision model (future)
+    # MLX warm-up: mock inference on startup to pre-compile Metal kernels
+    warmup: true
+
+# Model Provider Configurations
+# Note: API keys are read from environment variables by default if not set here.
+providers:
+  deepseek:
+    api_key: "${DEEPSEEK_API_KEY}"
+    base_url: "https://api.deepseek.com/v1"
+    models:
+      v4_pro: "deepseek-v4-pro"
+      v4_flash: "deepseek-v4-flash"
+      v4: "deepseek-chat" # Legacy alias
+  glm:
+    api_key: "${GLM_API_KEY}"
+    base_url: "https://open.bigmodel.cn/api/paas/v4"
+    models:
+      v5_2: "glm-5.2"
+      v4_plus: "glm-4-plus" # Legacy alias
+  minimax:
+    api_key: "${MINIMAX_API_KEY}"
+    base_url: "https://api.minimax.chat/v1"
+    models:
+      m3: "MiniMax-M3"
+      abab6_5: "abab6.5-chat" # Legacy alias
+  gemini:
+    api_key: "${GEMINI_API_KEY}"
+    base_url: "https://generativelanguage.googleapis.com/v1beta/openai" # Gemini OpenAI-compatible endpoint
+    models:
+      v2_5_pro: "gemini-2.5-pro"
+      v2_5_flash: "gemini-2.5-flash"
+      v3_1_pro: "gemini-3.1-pro-preview"
+      v3_5_flash: "gemini-3.5-flash"
+      deep_research: "deep-research-preview-04-2026"
+      antigravity: "antigravity-preview-05-2026"
+
+# Default Routing Strategy based on Task Intent Classification
+routing:
+  categories:
+    # Code, programming, algorithms, mathematical proofs, JSON output
+    coding:
+      primary: "deepseek-v4-pro"
+      fallbacks: ["gemini-2.5-pro", "deepseek-v4-flash", "glm-5.2", "MiniMax-M3"]
+    # Deep logic reasoning, long-context analysis, complex system architecture
+    reasoning:
+      primary: "gemini-2.5-pro"
+      fallbacks: ["deepseek-v4-pro", "glm-5.2", "MiniMax-M3"]
+    # Creative writing, copywriting, roleplay, brainstorming, casual chat
+    creative:
+      primary: "gemma_2b"           # Gemma 2B (Ollama) — lightweight & stable
+      fallbacks: ["llama_1b", "gemini-2.5-pro", "MiniMax-M3"]
+    # Chinese local context, translation, policy analysis, administrative tasks
+    chinese_nuance:
+      primary: "glm-5.2"
+      fallbacks: ["gemma_2b", "MiniMax-M3", "gemini-2.5-pro", "deepseek-v4-pro"]
+    # Vision-based and multimodal inputs (images / screenshots)
+    vision:
+      primary: "gemini-2.5-pro"
+      fallbacks: ["gemini-2.5-flash", "glm-5.2", "MiniMax-M3"]
+    # Agentic tool calling tasks requiring high-precision JSON parameters
+    agentic_tool_calling:
+      primary: "deepseek-v4-pro"
+      fallbacks: ["gemini-2.5-pro", "glm-5.2", "MiniMax-M3"]
+    # Default route if no classification match — local first, zero-cost fast path
+    general:
+      primary: "gemma_2b"           # Gemma 2B (Ollama) — instant simple chat
+      fallbacks: ["llama_1b", "gemini-2.5-pro", "deepseek-v4-flash", "MiniMax-M3", "glm-5.2"]
+
+  # ─── Two-Stage Intent Classifier ────────────────────────────────────
+  classifier:
+    # Stage 1: O(1) regex / keyword tree (nanosecond, no API cost)
+    # Stage 2: local LLM (Ollama Llama 1B) semantic classifier when regex misses
+    enabled: true
+    stage2_model: "llama_1b"        # Local Ollama 1B model for semantic classification (sub-2s)
+    stage2_timeout: 2.0             # Max seconds for local classifier (fast-fail)
+    stage2_fallback_intent: "general"  # If classifier times out, route here
+
+# Model Fusion Configuration
+fusion:
+  # Enable Model Fusion when the input prompt matches these keywords or complexity matches
+  enabled: true
+  keywords:
+    - "compare"
+    - "contrast"
+    - "evaluate"
+    - "deliberate"
+    - "fusion"
+    - "综合评估"
+    - "对比分析"
+    - "融合"
+  # Cloud Panel Models (to generate parallel answers — expensive but high-quality)
+  panel_models:
+    - "deepseek-v4-pro"
+    - "glm-5.2"
+    - "MiniMax-M3"
+  # Local Panel Models (zero-cost draft generation, 60%+ MoA cost savings)
+  # 16GB Mac mini 约束：Qwen 9B MLX (~6G) + Gemma 12B (~8G) 并行会 OOM
+  # 策略：只用一个本地主力 Panel (Qwen 9B)，其他 Panel 走云端
+  # 等分布式加速池上线后，可恢复双本地 Panel + 跨机器分发
+  local_panel_models:
+    - "qwen35_9b"
+  # Judge Model (to evaluate panel answers and synthesize the final output)
+  judge_model: "gemini-2.5-pro"
+  # Critic Models (to review the synthesized draft for bugs/omissions)
+  critic_models:
+    - "deepseek-v4-pro"
+    - "glm-5.2"
+  # Fusion strategy: "cloud" (all cloud panels), "hybrid" (local panels + cloud judge), "local_test" (all local)
+  strategy: "hybrid"
+
+# Global Retry Settings
+retry:
+  max_attempts: 3
+  backoff_factor: 1.5
+  timeout_seconds: 30
+
+# ─── Local Model Management ───────────────────────────────────────────
+local_model_policy:
+  # Max concurrent local GPU inferences (serial GPU, semaphore enforces)
+  max_concurrent: 2
+  # Idle unload: keep_alive in seconds before unloading local models
+  keepalive: 300
+  # Fallback: auto-degrade to cloud if local model fails (OOM / timeout)
+  fallback_on_failure: true
+  fallback_provider: "gemini-2.5-pro"

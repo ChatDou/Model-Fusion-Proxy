@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.bak.*
+slides/
+*.pptx
+*.pdf
+*.jpg
+*.png
+node_modules/
+.env
+.DS_Store
+tmp/
