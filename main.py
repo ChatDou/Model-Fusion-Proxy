@@ -93,6 +93,96 @@ async def list_models():
     ]
     return JSONResponse(content={"object": "list", "data": models_list})
 
+@app.post("/v1/responses")
+async def responses_api(request: Request):
+    """
+    OpenAI Responses API → Chat Completions translation layer.
+
+    CC-Switch (Codex Desktop) uses the modern Responses API endpoint
+    (/v1/responses) which wraps chat completions with a slightly
+    different format:
+
+      - `input`  → `messages` (string → [{"role":"user","content":...}])
+      - `instructions` → `system` message
+      - Response format differs (output is flat text, not choices array)
+
+    We normalize the request into chat completions, run it through the
+    same routing pipeline, then translate the response back.
+    """
+    body = await request.json()
+
+    # Normalize input to messages
+    user_input = body.get("input", "")
+    if isinstance(user_input, str):
+        messages = [{"role": "user", "content": user_input}]
+    elif isinstance(user_input, list):
+        messages = list(user_input)
+    else:
+        messages = [{"role": "user", "content": str(user_input)}]
+
+    # Inject instructions as system message
+    instructions = body.get("instructions", "")
+    if instructions:
+        messages.insert(0, {"role": "system", "content": instructions})
+
+    # Build chat completions payload
+    model = body.get("model", "model-fusion")
+    stream = body.get("stream", False)
+    tools = body.get("tools", None)
+
+    passthrough_keys = ["temperature", "max_tokens", "max_output_tokens",
+                       "top_p", "presence_penalty", "frequency_penalty", "stop"]
+    extra_params = {k: body[k] for k in passthrough_keys if k in body}
+    # normalize max_output_tokens → max_tokens
+    if "max_output_tokens" in body and "max_tokens" not in body:
+        extra_params["max_tokens"] = body["max_output_tokens"]
+
+    if tools:
+        extra_params["tools"] = tools
+        if "tool_choice" in body:
+            extra_params["tool_choice"] = body["tool_choice"]
+
+    logger.info(f"Responses API: model='{model}' | input_len={len(str(user_input))} | stream={stream}")
+
+    try:
+        category = await classify_intent(messages, tools=tools)
+        should_fuse = (model in ["model-fusion", "openrouter/fusion"] or check_fusion_trigger(messages, category)) and not tools
+
+        if should_fuse:
+            result = await execute_model_fusion(messages, stream=stream, category=category, **extra_params)
+        else:
+            result = await execute_with_fallback(category, messages, stream=stream, **extra_params)
+
+        if stream:
+            async def response_stream():
+                async for chunk in result:
+                    if isinstance(chunk, str):
+                        # Map SSE chat completion chunks to Responses API format
+                        yield chunk
+                    else:
+                        yield chunk
+            return StreamingResponse(
+                response_stream(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+            )
+        else:
+            # Extract content from chat completions response
+            content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            return JSONResponse(content={
+                "id": result.get("id", f"resp_{uuid.uuid4().hex}"),
+                "object": "response",
+                "model": model,
+                "output": [{"type": "message", "role": "assistant", "content": content}],
+                "usage": result.get("usage", {})
+            })
+    except ModelAPIError as e:
+        return JSONResponse(status_code=e.status_code, content={"error": {"message": str(e)}})
+    except Exception as e:
+        logger.error(f"Responses API error: {e}")
+        return JSONResponse(status_code=500, content={"error": {"message": "Internal proxy error"}})
+
+
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
     async with global_semaphore:
