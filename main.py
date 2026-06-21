@@ -93,7 +93,8 @@ async def list_models():
     ]
     return JSONResponse(content={"object": "list", "data": models_list})
 
-@app.post("/v1/responses")
+@app.api_route("/v1/responses", methods=["POST"])
+@app.api_route("/responses", methods=["POST"])  # CC-Switch strips the /v1 prefix
 async def responses_api(request: Request):
     """
     OpenAI Responses API → Chat Completions translation layer.
@@ -200,9 +201,22 @@ async def chat_completions(request: Request):
         extra_params = {k: body[k] for k in passthrough_keys if k in body}
 
         if tools:
-            extra_params["tools"] = tools
-            if "tool_choice" in body:
-                extra_params["tool_choice"] = body["tool_choice"]
+            # Sanitize: Codex CLI sends tools with empty function params that
+            # GLM/MiniMax reject as "function is empty (2013)".  Strip those
+            # before forwarding — a tool with no function definition can't be
+            # called anyway, so there's no semantic loss.
+            clean_tools = []
+            for t in tools:
+                fn = t.get("function", {})
+                if fn and fn.get("name"):
+                    clean_tools.append(t)
+            if clean_tools:
+                extra_params["tools"] = clean_tools
+                if "tool_choice" in body:
+                    extra_params["tool_choice"] = body["tool_choice"]
+            else:
+                # All tools were empty — treat as a no-tool request
+                tools = None
 
         logger.info(f"Received OpenAI request for model '{model}' | Messages: {len(messages)} | Stream: {stream} | Tools: {bool(tools)}")
 
