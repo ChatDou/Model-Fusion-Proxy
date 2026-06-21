@@ -142,7 +142,32 @@ def normalize_tools_for_model(provider: str, messages: List[Dict[str, str]], kwa
     if not tools:
         return messages, kwargs
 
+    # ── Universal tool sanitization (upstream models reject empty functions) ──
+    # Codex CLI and some clients send tool definitions with empty or
+    # malformed function blocks.  GLM rejects them as "function is empty
+    # (2013)", MiniMax returns 400, and DeepSeek silently ignores them.
+    # Strip any tool that doesn't have a complete {type, function.name}
+    # before forwarding — no semantic loss because a tool without a name
+    # can never be called.
+    clean_tools = []
+    for t in tools:
+        if t.get("type") == "function":
+            fn = t.get("function", {})
+            if fn and isinstance(fn, dict) and fn.get("name"):
+                clean_tools.append(t)
+            else:
+                logger.debug(f"Dropping tool with empty/missing function: {t}")
+    tools = clean_tools
+
+    if not tools:
+        # All tools were empty — strip from kwargs entirely
+        new_kwargs = dict(kwargs)
+        new_kwargs.pop("tools", None)
+        new_kwargs.pop("tool_choice", None)
+        return messages, new_kwargs
+
     new_kwargs = dict(kwargs)
+    new_kwargs["tools"] = tools
     
     if provider in ["mlx", "ollama"]:
         new_kwargs.pop("tools", None)
