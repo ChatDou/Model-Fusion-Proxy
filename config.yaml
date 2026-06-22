@@ -23,7 +23,7 @@ local:
     base_url: "http://127.0.0.1:8080/v1"  # mlx_lm.server default port
     api_key: "mlx"    # MLX server doesn't require auth locally
     models:
-      qwen35_9b: "/Users/douyuan/Documents/Codex/2026-06-04/gemma-4-12b-it-abliterated-gguf/work/models/omlx/Qwen3.5-9B-MLX-4bit"
+      qwen35_9b: "Qwen3.5-9B-MLX-4bit"  # MLX model name/path — customize if needed
       qwen35_vl: "dealignai/Qwen3.5-VL-9B-4bit-MLX-CRACK"  # Vision model (future)
     # MLX warm-up: mock inference on startup to pre-compile Metal kernels
     warmup: true
@@ -66,11 +66,11 @@ routing:
   categories:
     # Code, programming, algorithms, mathematical proofs, JSON output
     coding:
-      primary: "deepseek-v4-pro"
-      fallbacks: ["gemini-2.5-pro", "deepseek-v4-flash", "glm-5.2", "MiniMax-M3"]
+      primary: "deepseek-v4-flash"
+      fallbacks: ["gemini-3.1-pro-preview", "deepseek-v4-pro", "glm-5.2", "MiniMax-M3"]
     # Deep logic reasoning, long-context analysis, complex system architecture
     reasoning:
-      primary: "gemini-2.5-pro"
+      primary: "gemini-3.1-pro-preview"
       fallbacks: ["deepseek-v4-pro", "glm-5.2", "MiniMax-M3"]
     # Creative writing, copywriting, roleplay, brainstorming, casual chat
     creative:
@@ -86,8 +86,8 @@ routing:
       fallbacks: ["gemini-2.5-flash", "glm-5.2", "MiniMax-M3"]
     # Agentic tool calling tasks requiring high-precision JSON parameters
     agentic_tool_calling:
-      primary: "deepseek-v4-pro"
-      fallbacks: ["gemini-2.5-pro", "glm-5.2", "MiniMax-M3"]
+      primary: "gemini-3.5-flash"
+      fallbacks: ["gemini-3.1-pro-preview", "deepseek-v4-pro", "glm-5.2", "MiniMax-M3"]
     # Default route if no classification match — local first, zero-cost fast path
     general:
       primary: "gemma_2b"           # Gemma 2B (Ollama) — instant simple chat
@@ -127,7 +127,7 @@ fusion:
   local_panel_models:
     - "qwen35_9b"
   # Judge Model (to evaluate panel answers and synthesize the final output)
-  judge_model: "gemini-2.5-pro"
+  judge_model: "gemini-3.1-pro-preview"
   # Critic Models (to review the synthesized draft for bugs/omissions)
   critic_models:
     - "deepseek-v4-pro"

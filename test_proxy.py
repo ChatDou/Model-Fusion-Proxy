@@ -59,7 +59,7 @@ class TestModelFusionProxyLogic(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res["choices"][0]["message"]["content"], "DeepSeek success")
         # Racing fallback: 1 primary + 4 fallbacks = 5 calls
         self.assertEqual(mock_make_api_call.call_count, 5)
-        self.assertEqual(mock_make_api_call.call_args_list[0][0][0], "deepseek-v4-pro")
+        self.assertEqual(mock_make_api_call.call_args_list[0][0][0], "deepseek-v4-flash")
 
     @patch("router.make_api_call", new_callable=AsyncMock)
     async def test_routing_fallback_seamless_failover(self, mock_make_api_call):
@@ -82,7 +82,7 @@ class TestModelFusionProxyLogic(unittest.IsolatedAsyncioTestCase):
             "Gemini fallback success", "Flash success", "Pro success", "GLM success", "MiniMax success"
         ])
         # Primary must have been attempted first
-        self.assertEqual(mock_make_api_call.call_args_list[0][0][0], "deepseek-v4-pro")
+        self.assertEqual(mock_make_api_call.call_args_list[0][0][0], "deepseek-v4-flash")
 
     @patch("fusion.make_api_call", new_callable=AsyncMock)
     async def test_fusion_deliberation_and_synthesis(self, mock_make_api_call):
@@ -97,9 +97,10 @@ class TestModelFusionProxyLogic(unittest.IsolatedAsyncioTestCase):
             {"choices": [{"message": {"content": "Judge final refined answer"}}]}   # judge final
         ]
         
-        res = await fusion.execute_model_fusion([{"role": "user", "content": "Compare A and B"}], stream=False)
-        self.assertEqual(res["choices"][0]["message"]["content"], "Judge final refined answer")
-        self.assertEqual(mock_make_api_call.call_count, 7)
+        with patch.dict(fusion.config["fusion"], {"strategy": "cloud"}):
+            res = await fusion.execute_model_fusion([{"role": "user", "content": "Compare A and B"}], stream=False)
+            self.assertEqual(res["choices"][0]["message"]["content"], "Judge final refined answer")
+            self.assertEqual(mock_make_api_call.call_count, 7)
 
     @patch("main.execute_with_fallback", new_callable=AsyncMock)
     def test_anthropic_messages_non_streaming_translation(self, mock_execute_fallback):

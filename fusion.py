@@ -79,7 +79,7 @@ Instructions:
 3. Provide concrete suggestions or code snippets to fix the issues.
 4. Output your critique directly. Be concise and technical. Do not write generic remarks."""
 
-JUDGE_FINAL_SYSTEM_PROMPT = """You are the Supreme AI Judge & Refinement Engine. Your final goal is to produce a state-of-the-art master response that matches the cognitive capability, agentic multi-step reasoning, logical precision, and elite software engineering capability of Claude Fable 5.
+JUDGE_FINAL_SYSTEM_PROMPT = """You are the Supreme AI Judge & Refinement Engine. Your final goal is to produce a state-of-the-art master response that demonstrates elite multi-step reasoning, logical precision, and software engineering capability.
 
 Original User Request:
 <USER_REQUEST>
@@ -371,7 +371,7 @@ async def _execute_model_fusion_core(
 
             # --- Phase 4: Final Refinement ---
             total_pre_dur = time.time() - start_time
-            yield make_chunk(f"<!-- [Phase 4: Refining] ✨ Synthesis finished in {total_pre_dur:.2f}s. Streaming final Fable-level refined answer... -->\n\n")
+            yield make_chunk(f"<!-- [Phase 4: Refining] ✨ Synthesis finished in {total_pre_dur:.2f}s. Streaming final refined answer... -->\n\n")
 
             final_prompt = JUDGE_FINAL_SYSTEM_PROMPT.format(user_request=user_request, draft_solution=draft_solution, critic_reviews=critic_reviews) + guidelines
             final_messages = [
@@ -438,7 +438,7 @@ async def _execute_model_fusion_core(
 
     else:
         # Non-streaming Loop
-        logger.info("Executing Non-Streaming Model Fusion (Claude Fable 5 Loop)")
+        logger.info("Executing Non-Streaming Model Fusion")
         
         # Phase 1: Panel Drafting
         # Each query_panel_model() is individually capped at 60s via

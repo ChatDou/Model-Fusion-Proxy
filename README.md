@@ -1,24 +1,19 @@
-# Model Fusion Proxy v0.2.0
+# Model Fusion Proxy v0.2.1
 
-> 🚀 **性能对标 Claude Fable 5** · 快 2.9x · 成本仅 1/3
->
-> 基于 MoE（Mixture of Experts）架构的智能模型代理网关。自动判断任务难度，按需选择本地或云端模型——能用便宜的绝不用贵的，便宜不够时多模型协作模拟顶级模型。
+> 🚀 **低成本高性能模型代理** · 基于 MoE（Mixture of Experts）架构的智能模型代理网关。自动判断任务难度，按需选择本地或云端模型——能用便宜的绝不用贵的，便宜不够时多模型协作模拟顶级模型。
 
 ---
 
-## 📊 Benchmark
+## 📊 定位
 
-| 维度 | Model Fusion Proxy | Claude Fable 5 | 差距 |
-|------|:---:|:---:|:---:|
-| 🖥️ 代码生成 | **100** | 95 | +5 🟢 |
-| 🧠 逻辑推理 | **100** | 98 | +2 🟢 |
-| ✍️ 创意写作 | **90** | 92 | -2 🟡 |
-| 🇨🇳 中文语境 | **100** | 80 | +20 🟢 |
-| ⚡ 响应速度 | **80** | 70 | +10 🟢 |
-| 🔮 MoA 融合 | 80 | 95 | -15 🔴 |
-| **综合加权** | **94.5** | **90.5** | **+4.0** |
+Model Fusion Proxy 通过以下策略在成本与质量间平衡：
 
-> 6 维度 4 胜 1 平 1 负，综合反超。验证命令：`python full_benchmark.py`
+- **双层意图路由**：O(1) 正则快速分类 + 本地 LLM 语义兜底
+- **Fallback 链容错**：非流式并发 racing / 流式串行后备，失败自动切换
+- **MoA 四阶段融合**：多模型 Panel → Judge 合成 → Critic 审查 → 精修输出
+- **本地模型加速**：Apple Silicon MLX / Ollama 零成本毫秒级推理
+
+验证命令：`python full_benchmark.py`（需要 proxy 运行在 127.0.0.1:8000）
 
 ---
 
@@ -153,10 +148,10 @@ MINIMAX_API_KEY=xxxxxxxxxxxxxxxx
 ├── fusion.py            # MoA 四阶段融合引擎
 ├── client.py            # HTTP 客户端 + 多 provider 抽象
 ├── config.yaml          # 模型配置、路由策略、融合参数
-├── full_benchmark.py    # 对标 Fable 5 全面基准测试
+├── full_benchmark.py    # 全面基准测试
 ├── benchmark.py         # 快速功能测试
 ├── test_proxy.py        # 单元测试套件
-├── test_fable_features.py # Fable 5 新特性测试
+├── test_fable_features.py # AST 校验 / 工具调用 / 视觉分类测试
 ├── start.sh             # LaunchAgent 自启动脚本
 ├── start_mlx.sh         # MLX 本地模型服务启动脚本
 └── requirements.txt     # Python 依赖
@@ -191,16 +186,18 @@ launchctl load ~/Library/LaunchAgents/com.douyuan.mlx-model-server.plist
 ## 💰 成本
 
 - **日均**：约 $2（四家包月订阅 + 本地模型零成本）
-- **等效 Fable 5**：约 $6/天
-- **节省**：~67%（约 1/3）
+- **对比云端旗舰模型**：约 1/3 成本
+- **本地模型**：零成本（Apple Silicon MLX / Ollama）
 
 ---
 
 ## 🤖 由 AI Agent 协作构建
 
-- **Claude Code** — 架构设计、核心开发、坑位排查、部署运维、推广策划
-- **Antigravity (Gemini 3.5 Flash)** — Fable 5 级性能优化、本地 AST 校验、工具调用适配、双层路由设计
+- **Claude Code** — 架构设计、核心开发、坑位排查、部署运维
+- **Antigravity IDE (Google Gemini Code Assist)** — 性能优化、本地 AST 校验、工具调用适配、双层路由设计
 - **Hermes Agent** — 接入配置与实时驱动
+
+> 注：`antigravity-preview-05-2026` 是 Google Gemini 的实验预览模型，可用于 MoA 的 Judge 或 Panel。Antigravity IDE 是开发此项目时使用的编程助手，两者是不同的东西。
 
 ---
 

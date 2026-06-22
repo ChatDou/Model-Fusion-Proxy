@@ -1,0 +1,43 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#FFE800', 'primaryTextColor': '#000', 'primaryBorderColor': '#000', 'lineColor': '#000', 'secondaryColor': '#FF3D00', 'tertiaryColor': '#fff', 'fontSize': '15px'}}}%%
+graph TB
+    START["📩 请求 → 意图分类完成"] --> MODE{"stream?"}
+
+    MODE -->|"非流式 (batch)"| RACE
+
+    subgraph RACE_BOX["🏁 非流式 Racing Fallback (全并发 · 谁快谁赢)"]
+        direction LR
+        RACE["asyncio.create_task 全量并发"]
+        T1["deepseek-v4-pro<br/>(首选)"]
+        T2["gemini-2.5-pro"]
+        T3["deepseek-v4-flash"]
+        T4["glm-5.2"]
+        T5["MiniMax-M3"]
+        RACE --> T1 & T2 & T3 & T4 & T5
+        T1 & T2 & T3 & T4 & T5 --> WAIT["asyncio.wait<br/>FIRST_COMPLETED"]
+        WAIT --> WINNER{"谁先完成?"}
+        WINNER -->|"第一个成功"| CANCEL["✅ 返回结果<br/>❌ cancel 所有输家<br/>省 token"]
+        WINNER -->|"全部失败"| ALL_FAIL["❌ HTTP 500"]
+    end
+
+    MODE -->|"流式 (streaming)"| SEQ
+
+    subgraph SEQ_BOX["📡 流式串行 Fallback"]
+        direction TB
+        SEQ["按顺序尝试"]
+        S1["1️⃣ deepseek-v4-pro"] -->|"失败"| S2
+        S2["2️⃣ gemini-2.5-pro"] -->|"失败"| S3
+        S3["3️⃣ glm-5.2"] -->|"失败"| S4
+        S4["4️⃣ MiniMax-M3"] -->|"失败"| S5
+        S5["5️⃣ deepseek-v4-flash"] -->|"失败"| ALL_FAIL2["❌ HTTP 500"]
+        S1 -->|"成功"| YIELD
+        S2 -->|"成功"| YIELD
+        S3 -->|"成功"| YIELD
+        S4 -->|"成功"| YIELD
+        S5 -->|"成功"| YIELD
+        YIELD["✅ 流式输出首字节<br/>之后不能再换模型"]
+    end
+
+    SUB_TEXT["⚠️ 流式不可 Racing: 一旦发出第一个 SSE chunk,<br/>HTTP 响应已开始, 无法换模型。<br/>只能串行尝试, 在首字节前 fallback。"]
+
+    CANCEL --> RESULT["🎯 返回结果"]
+    YIELD --> RESULT

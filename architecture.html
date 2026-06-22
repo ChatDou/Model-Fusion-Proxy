@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Model Fusion Proxy 架构图</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', monospace;
+      background: #020617;
+      min-height: 100vh;
+      padding: 2rem;
+      color: white;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot {
+      width: 12px; height: 12px;
+      background: #22d3ee;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 1rem;
+      border: 1px solid #1e293b;
+      padding: 1.5rem;
+      overflow-x: auto;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 0.75rem;
+      border: 1px solid #1e293b;
+      padding: 1.25rem;
+    }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="header-row">
+      <div class="pulse-dot"></div>
+      <h1>Model Fusion Proxy 架构总览</h1>
+    </div>
+    <p class="subtitle">基于 MoE 的智能模型代理网关 — 本地 + 云端混合路由</p>
+  </div>
+
+  <div class="diagram-container">
+    <svg viewBox="0 0 1100 850">
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+        </marker>
+        <marker id="arrow-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/>
+        </marker>
+        <marker id="arrow-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
+        </marker>
+        <marker id="arrow-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185"/>
+        </marker>
+        <marker id="arrow-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa"/>
+        </marker>
+        <marker id="arrow-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/>
+        </marker>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+        </pattern>
+      </defs>
+
+      <rect width="100%" height="100%" fill="url(#grid)"/>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           第 1 层：客户端接入  (y=25-85)
+           ════════════════════════════════════════════════════════════ -->
+      <rect x="30" y="25" width="170" height="55" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="115" y="47" fill="white" font-size="11" font-weight="600" text-anchor="middle">Hermes Agent</text>
+      <text x="115" y="63" fill="#94a3b8" font-size="9" text-anchor="middle">OpenAI 兼容</text>
+
+      <rect x="230" y="25" width="170" height="55" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="315" y="47" fill="white" font-size="11" font-weight="600" text-anchor="middle">Claude Code</text>
+      <text x="315" y="63" fill="#94a3b8" font-size="9" text-anchor="middle">Anthropic API</text>
+
+      <rect x="430" y="25" width="170" height="55" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="515" y="47" fill="white" font-size="11" font-weight="600" text-anchor="middle">Cursor / Copilot</text>
+      <text x="515" y="63" fill="#94a3b8" font-size="9" text-anchor="middle">OpenAI 兼容</text>
+
+      <rect x="630" y="25" width="170" height="55" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="715" y="47" fill="white" font-size="11" font-weight="600" text-anchor="middle">CC-Switch</text>
+      <text x="715" y="63" fill="#94a3b8" font-size="9" text-anchor="middle">Responses API</text>
+
+      <!-- 客户端 → 入口箭头 -->
+      <line x1="200" y1="52" x2="258" y2="110" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+      <line x1="315" y1="80" x2="315" y2="108" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+      <line x1="515" y1="80" x2="448" y2="108" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+      <line x1="715" y1="80" x2="650" y2="108" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           第 2 层：协议翻译层  (y=105-180)
+           ════════════════════════════════════════════════════════════ -->
+      <rect x="20" y="105" width="820" height="80" rx="10" fill="rgba(8,51,68,0.05)" stroke="#22d3ee" stroke-width="1" stroke-dasharray="6,3"/>
+      <text x="32" y="120" fill="#22d3ee" font-size="9" font-weight="600">协议翻译层</text>
+
+      <rect x="30" y="128" width="240" height="48" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="150" y="148" fill="white" font-size="10" font-weight="600" text-anchor="middle">/v1/chat/completions</text>
+      <text x="150" y="164" fill="#94a3b8" font-size="8" text-anchor="middle">+ /chat/completions（无 /v1 别名）</text>
+
+      <rect x="295" y="128" width="240" height="48" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="415" y="148" fill="white" font-size="10" font-weight="600" text-anchor="middle">/v1/messages</text>
+      <text x="415" y="164" fill="#94a3b8" font-size="8" text-anchor="middle">+ /messages · Anthropic ↔ OpenAI 互译</text>
+
+      <rect x="560" y="128" width="260" height="48" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="690" y="148" fill="white" font-size="10" font-weight="600" text-anchor="middle">/v1/responses</text>
+      <text x="690" y="164" fill="#94a3b8" font-size="8" text-anchor="middle">CC-Switch · Responses → Chat 互译</text>
+
+      <!-- normalize_messages -->
+      <rect x="860" y="118" width="220" height="58" rx="5" fill="rgba(136,19,55,0.3)" stroke="#fb7185" stroke-width="1.5"/>
+      <text x="970" y="140" fill="white" font-size="10" font-weight="600" text-anchor="middle">normalize_messages()</text>
+      <text x="970" y="156" fill="#94a3b8" font-size="8" text-anchor="middle">developer→system · 列表→纯文本</text>
+      <text x="970" y="168" fill="#fb7185" font-size="7" text-anchor="middle">消息统一清洗器</text>
+
+      <line x1="820" y1="152" x2="858" y2="147" stroke="#fb7185" stroke-width="1"/>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           第 3 层：双层意图分类器  (y=210-305)
+           ════════════════════════════════════════════════════════════ -->
+      <rect x="30" y="210" width="1050" height="88" rx="8" fill="rgba(6,78,59,0.08)" stroke="#34d399" stroke-width="1" stroke-dasharray="6,3"/>
+      <text x="42" y="226" fill="#34d399" font-size="9" font-weight="600">双层意图分类器</text>
+
+      <!-- Stage 1 -->
+      <rect x="50" y="238" width="490" height="42" rx="5" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="295" y="256" fill="white" font-size="10" font-weight="600" text-anchor="middle">第 1 层：O(1) 预编译正则 + 关键词树</text>
+      <text x="295" y="272" fill="#94a3b8" font-size="8" text-anchor="middle">覆盖约 70% 流量 · 纳秒级 · 零 API 成本 · 五分类匹配</text>
+
+      <text x="555" y="263" fill="#34d399" font-size="8" text-anchor="middle">未命中</text>
+      <line x1="542" y1="259" x2="582" y2="259" stroke="#34d399" stroke-width="1" marker-end="url(#arrow-emerald)"/>
+
+      <!-- Stage 2 -->
+      <rect x="585" y="238" width="470" height="42" rx="5" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="820" y="256" fill="white" font-size="10" font-weight="600" text-anchor="middle">第 2 层：本地 LLM 语义分类器</text>
+      <text x="820" y="272" fill="#94a3b8" font-size="8" text-anchor="middle">Ollama Llama 1B · ~200-500ms · 失败降级 → 通用类</text>
+
+      <!-- 分类标签行 -->
+      <rect x="50" y="286" width="125" height="18" rx="3" fill="rgba(6,78,59,0.3)"/>
+      <text x="112" y="298" fill="#34d399" font-size="8" text-anchor="middle">代码</text>
+      <rect x="183" y="286" width="125" height="18" rx="3" fill="rgba(6,78,59,0.3)"/>
+      <text x="245" y="298" fill="#34d399" font-size="8" text-anchor="middle">推理</text>
+      <rect x="316" y="286" width="125" height="18" rx="3" fill="rgba(6,78,59,0.3)"/>
+      <text x="378" y="298" fill="#34d399" font-size="8" text-anchor="middle">创意</text>
+      <rect x="449" y="286" width="125" height="18" rx="3" fill="rgba(6,78,59,0.3)"/>
+      <text x="511" y="298" fill="#34d399" font-size="8" text-anchor="middle">中文语境</text>
+      <rect x="582" y="286" width="130" height="18" rx="3" fill="rgba(6,78,59,0.3)"/>
+      <text x="647" y="298" fill="#34d399" font-size="8" text-anchor="middle">视觉</text>
+      <rect x="720" y="286" width="150" height="18" rx="3" fill="rgba(6,78,59,0.3)"/>
+      <text x="795" y="298" fill="#34d399" font-size="8" text-anchor="middle">工具调用</text>
+      <rect x="878" y="286" width="185" height="18" rx="3" fill="rgba(6,78,59,0.3)"/>
+      <text x="970" y="298" fill="#34d399" font-size="8" text-anchor="middle">通用（缺省）</text>
+
+      <!-- 分类结果 → 融合决策 -->
+      <line x1="555" y1="305" x2="555" y2="338" stroke="#34d399" stroke-width="1"/>
+
+      <!-- 融合决策菱形 -->
+      <rect x="475" y="340" width="160" height="32" rx="4" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="555" y="361" fill="white" font-size="10" font-weight="600" text-anchor="middle">触发融合？</text>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           第 4 层：双路径
+           左 — Fallback 链  (x=30-490)
+           右 — MoA 融合     (x=520-1080)
+           ════════════════════════════════════════════════════════════ -->
+      <rect x="25" y="388" width="500" height="195" rx="8" fill="rgba(6,78,59,0.04)" stroke="#34d399" stroke-width="0.8" stroke-dasharray="4,4"/>
+      <text x="35" y="403" fill="#34d399" font-size="9" font-weight="600">Fallback 链（不融合）</text>
+
+      <text x="475" y="393" fill="#34d399" font-size="8" text-anchor="middle">否</text>
+      <line x1="475" y1="356" x2="475" y2="408" stroke="#34d399" stroke-width="1.2" marker-end="url(#arrow-emerald)"/>
+
+      <!-- 模型队列 -->
+      <rect x="40" y="418" width="470" height="40" rx="5" fill="rgba(6,78,59,0.3)" stroke="#34d399" stroke-width="1"/>
+      <text x="275" y="433" fill="white" font-size="9" font-weight="600" text-anchor="middle">模型队列：首选 → 后备₁ → 后备₂ → ... → 后备ₙ</text>
+      <text x="275" y="449" fill="#94a3b8" font-size="8" text-anchor="middle">按分类从 routing.categories 中读取专属后备链</text>
+
+      <!-- 非流式 racing -->
+      <rect x="40" y="471" width="230" height="55" rx="5" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="155" y="491" fill="white" font-size="10" font-weight="600" text-anchor="middle">非流式：并发竞速</text>
+      <text x="155" y="507" fill="#94a3b8" font-size="8" text-anchor="middle">全部模型并行 · 谁先返回谁赢</text>
+      <text x="155" y="520" fill="#34d399" font-size="7" text-anchor="middle">输者立即 cancel → 不浪费 token</text>
+
+      <!-- 流式串行 -->
+      <rect x="280" y="471" width="230" height="55" rx="5" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="395" y="491" fill="white" font-size="10" font-weight="600" text-anchor="middle">流式：串行后备</text>
+      <text x="395" y="507" fill="#94a3b8" font-size="8" text-anchor="middle">尝试首选 → 失败 → 下一个</text>
+      <text x="395" y="520" fill="#94a3b8" font-size="7" text-anchor="middle">流式无法中途切换模型</text>
+
+      <!-- 右路径 — MoA 融合 -->
+      <rect x="530" y="388" width="550" height="195" rx="8" fill="rgba(76,29,149,0.04)" stroke="#a78bfa" stroke-width="0.8" stroke-dasharray="4,4"/>
+      <text x="540" y="403" fill="#a78bfa" font-size="9" font-weight="600">MoA 四阶段审议循环（触发融合）</text>
+
+      <text x="550" y="393" fill="#a78bfa" font-size="8" text-anchor="middle">是</text>
+      <path d="M 635 356 L 635 380 Q 635 395 650 395 L 660 395" fill="none" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arrow-violet)"/>
+
+      <!-- Phase 1 -->
+      <rect x="545" y="418" width="120" height="52" rx="5" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="605" y="438" fill="white" font-size="9" font-weight="600" text-anchor="middle">阶段 1：Panel</text>
+      <text x="605" y="454" fill="#94a3b8" font-size="7" text-anchor="middle">DeepSeek V4 Pro</text>
+      <text x="605" y="465" fill="#a78bfa" font-size="7" text-anchor="middle">GLM 5.2 · MiniMax M3</text>
+
+      <!-- Phase 2 -->
+      <rect x="675" y="418" width="120" height="52" rx="5" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="735" y="438" fill="white" font-size="9" font-weight="600" text-anchor="middle">阶段 2：合成</text>
+      <text x="735" y="454" fill="#94a3b8" font-size="7" text-anchor="middle">Judge 统一草案</text>
+      <text x="735" y="465" fill="#a78bfa" font-size="7" text-anchor="middle">Gemini 2.5 Pro</text>
+
+      <!-- Phase 3 -->
+      <rect x="805" y="418" width="120" height="52" rx="5" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="865" y="438" fill="white" font-size="9" font-weight="600" text-anchor="middle">阶段 3：审查</text>
+      <text x="865" y="454" fill="#94a3b8" font-size="7" text-anchor="middle">DeepSeek + GLM</text>
+      <text x="865" y="465" fill="#a78bfa" font-size="7" text-anchor="middle">+ AST 语法校验</text>
+
+      <!-- Phase 4 -->
+      <rect x="935" y="418" width="130" height="52" rx="5" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="1000" y="438" fill="white" font-size="9" font-weight="600" text-anchor="middle">阶段 4：精修</text>
+      <text x="1000" y="454" fill="#94a3b8" font-size="7" text-anchor="middle">Judge 最终输出</text>
+      <text x="1000" y="465" fill="#a78bfa" font-size="7" text-anchor="middle">Gemini 2.5 Pro</text>
+
+      <!-- 阶段间箭头 -->
+      <line x1="665" y1="444" x2="673" y2="444" stroke="#a78bfa" stroke-width="1" marker-end="url(#arrow-violet)"/>
+      <line x1="795" y1="444" x2="803" y2="444" stroke="#a78bfa" stroke-width="1" marker-end="url(#arrow-violet)"/>
+      <line x1="925" y1="444" x2="933" y2="444" stroke="#a78bfa" stroke-width="1" marker-end="url(#arrow-violet)"/>
+
+      <!-- 融合空响应保护 -->
+      <rect x="545" y="478" width="350" height="28" rx="4" fill="rgba(136,19,55,0.2)" stroke="#fb7185" stroke-width="1" stroke-dasharray="3,3"/>
+      <text x="720" y="494" fill="#fb7185" font-size="8" text-anchor="middle">熔断保护：融合返回空 → 自动降级 Fallback 快速通道</text>
+
+      <!-- 响应返回箭头（Fallback） -->
+      <line x1="275" y1="526" x2="275" y2="560" stroke="#34d399" stroke-width="1.2" marker-end="url(#arrow-emerald)"/>
+
+      <!-- 响应返回箭头（Fusion） -->
+      <line x1="840" y1="526" x2="840" y2="560" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arrow-violet)"/>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           第 5 层：模型供应商  (y=566-648)
+           ════════════════════════════════════════════════════════════ -->
+
+      <!-- 本地模型区域 -->
+      <rect x="25" y="566" width="380" height="90" rx="8" fill="rgba(120,53,15,0.05)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="6,3"/>
+      <text x="35" y="581" fill="#fbbf24" font-size="9" font-weight="600">本地模型 (Apple Silicon · 零成本)</text>
+
+      <rect x="40" y="592" width="175" height="54" rx="5" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="127" y="612" fill="white" font-size="10" font-weight="600" text-anchor="middle">Ollama</text>
+      <text x="127" y="628" fill="#94a3b8" font-size="8" text-anchor="middle">Gemma 2B · Llama 3.2 1B</text>
+      <text x="127" y="640" fill="#fbbf24" font-size="7" text-anchor="middle">端口 :11434</text>
+
+      <rect x="225" y="592" width="170" height="54" rx="5" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="310" y="612" fill="white" font-size="10" font-weight="600" text-anchor="middle">MLX</text>
+      <text x="310" y="628" fill="#94a3b8" font-size="8" text-anchor="middle">Qwen 3.5 9B · ~6GB UMA</text>
+      <text x="310" y="640" fill="#fbbf24" font-size="7" text-anchor="middle">Metal 加速 · 端口 :8080</text>
+
+      <!-- 云端模型区域 -->
+      <rect x="430" y="566" width="650" height="90" rx="8" fill="rgba(76,29,149,0.05)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="6,3"/>
+      <text x="440" y="581" fill="#a78bfa" font-size="9" font-weight="600">云端模型 (OpenRouter / 直连 API)</text>
+
+      <rect x="445" y="592" width="145" height="54" rx="5" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="517" y="612" fill="white" font-size="10" font-weight="600" text-anchor="middle">DeepSeek</text>
+      <text x="517" y="628" fill="#94a3b8" font-size="8" text-anchor="middle">V4 Pro · V4 Flash</text>
+      <text x="517" y="640" fill="#a78bfa" font-size="7" text-anchor="middle">代码首选</text>
+
+      <rect x="600" y="592" width="145" height="54" rx="5" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="672" y="612" fill="white" font-size="10" font-weight="600" text-anchor="middle">智谱 GLM</text>
+      <text x="672" y="628" fill="#94a3b8" font-size="8" text-anchor="middle">GLM 5.2 · GLM 4 Plus</text>
+      <text x="672" y="640" fill="#a78bfa" font-size="7" text-anchor="middle">中文 · 批评家</text>
+
+      <rect x="755" y="592" width="145" height="54" rx="5" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="827" y="612" fill="white" font-size="10" font-weight="600" text-anchor="middle">MiniMax</text>
+      <text x="827" y="628" fill="#94a3b8" font-size="8" text-anchor="middle">M3 · Abab6.5</text>
+      <text x="827" y="640" fill="#a78bfa" font-size="7" text-anchor="middle">创意后备</text>
+
+      <rect x="910" y="592" width="155" height="54" rx="5" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="987" y="612" fill="white" font-size="10" font-weight="600" text-anchor="middle">Google Gemini</text>
+      <text x="987" y="628" fill="#94a3b8" font-size="8" text-anchor="middle">2.5 Pro · 2.5 Flash</text>
+      <text x="987" y="640" fill="#a78bfa" font-size="7" text-anchor="middle">裁判 · 推理</text>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           图例  (y=680+)
+           ════════════════════════════════════════════════════════════ -->
+      <text x="30" y="678" fill="white" font-size="11" font-weight="600">图例</text>
+
+      <rect x="30" y="690" width="18" height="12" rx="2" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1"/>
+      <text x="54" y="699" fill="#94a3b8" font-size="9">协议层</text>
+
+      <rect x="150" y="690" width="18" height="12" rx="2" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1"/>
+      <text x="174" y="699" fill="#94a3b8" font-size="9">路由 / Fallback</text>
+
+      <rect x="310" y="690" width="18" height="12" rx="2" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1"/>
+      <text x="334" y="699" fill="#94a3b8" font-size="9">MoA 融合管线</text>
+
+      <rect x="470" y="690" width="18" height="12" rx="2" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="494" y="699" fill="#94a3b8" font-size="9">本地模型 (GPU)</text>
+
+      <rect x="640" y="690" width="18" height="12" rx="2" fill="rgba(136,19,55,0.3)" stroke="#fb7185" stroke-width="1"/>
+      <text x="664" y="699" fill="#94a3b8" font-size="9">清洗器 / 熔断</text>
+
+      <rect x="30" y="712" width="18" height="12" rx="2" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1"/>
+      <text x="54" y="721" fill="#94a3b8" font-size="9">客户端 / 外部</text>
+
+      <line x1="150" y1="718" x2="168" y2="718" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+      <text x="175" y="721" fill="#94a3b8" font-size="9">请求/响应流</text>
+
+      <line x1="310" y1="718" x2="328" y2="718" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-violet)"/>
+      <text x="335" y="721" fill="#94a3b8" font-size="9">融合审议流</text>
+
+      <line x1="470" y1="718" x2="488" y2="718" stroke="#fb7185" stroke-width="1" stroke-dasharray="3,3"/>
+      <text x="495" y="721" fill="#94a3b8" font-size="9">熔断/安全路径</text>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           关键策略注释
+           ════════════════════════════════════════════════════════════ -->
+      <rect x="40" y="530" width="460" height="20" rx="3" fill="rgba(120,53,15,0.15)"/>
+      <text x="270" y="544" fill="#fbbf24" font-size="7" text-anchor="middle">本地 GPU 信号量（最多 2 并发）· 短超时、不重试，防止 OOM</text>
+
+      <text x="840" y="550" fill="#94a3b8" font-size="7" text-anchor="middle">全局信号量：64 并发请求</text>
+
+    </svg>
+  </div>
+
+  <!-- 信息卡片 -->
+  <div class="cards">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot emerald"></div>
+        <h3>路由策略</h3>
+      </div>
+      <ul>
+        <li>• 8 种意图分类（代码 / 推理 / 创意 / 中文语境 / 视觉 / 工具调用 / 通用）</li>
+        <li>• 每类：1 个首选 + 4 个后备模型</li>
+        <li>• 通用 & 创意 → 本地 Gemma 2B 优先（零成本）</li>
+        <li>• 代码 & 工具调用 → DeepSeek V4 Pro 首选</li>
+        <li>• 推理 → Gemini 2.5 Pro 首选</li>
+        <li>• 中文语境 → GLM 5.2 首选</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot violet"></div>
+        <h3>MoA 融合（显式开启）</h3>
+      </div>
+      <ul>
+        <li>• 仅通过 model="model-fusion" 显式触发</li>
+        <li>• 阶段 1：3 个云端 Panel 并行草拟（≤60s）</li>
+        <li>• 阶段 2：Judge（Gemini 2.5 Pro）合成草案</li>
+        <li>• 阶段 3：2 个批评家 + 本地 AST 校验</li>
+        <li>• 阶段 4：Judge 精修输出终稿</li>
+        <li>• 策略：hybrid（本地 Qwen 9B 为 Panel + 云端 Judge）</li>
+        <li>• 空响应熔断：自动回退 Fallback 快速通道</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot rose"></div>
+        <h3>容错与安全</h3>
+      </div>
+      <ul>
+        <li>• P0 修复：删除 "claude" 子串融合触发 — 融合改为显式开启</li>
+        <li>• 非流式：并发竞速（先到先赢，失败者 cancel）</li>
+        <li>• 流式：串行后备（无法中途切换模型）</li>
+        <li>• 本地 GPU 信号量：最多 2 并发、不重试（防 OOM）</li>
+        <li>• 全局并发信号量：64 并发请求上限</li>
+        <li>• 空工具清洗：进入上游前剥离无名函数</li>
+        <li>• .env 缓存：启动时解析一次（避免每次请求读盘）</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="footer">
+    Model Fusion Proxy v0.2.1 · MIT 开源协议 · github.com/ChatDou/Model-Fusion-Proxy
+  </p>
+</div>
+</body>
+</html>

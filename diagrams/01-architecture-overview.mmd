@@ -1,0 +1,53 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#FFE800', 'primaryTextColor': '#000', 'primaryBorderColor': '#000', 'lineColor': '#000', 'secondaryColor': '#FF3D00', 'tertiaryColor': '#fff', 'fontSize': '16px'}}}%%
+graph TB
+    subgraph CLIENTS["客户端层"]
+        Hermes["🤖 Hermes<br/>(OpenAI API)"]
+        Cursor["💻 Cursor / Copilot<br/>(OpenAI API)"]
+        CC["🖥️ CC-Switch<br/>(Responses API)"]
+        Claude["🧠 Claude Code<br/>(Anthropic API)"]
+    end
+
+    subgraph PROXY["Model Fusion Proxy :8000"]
+        direction TB
+
+        subgraph INGRESS["入口层"]
+            OAI["/v1/chat/completions<br/>/v1/responses<br/>/responses"]
+            ANTHRO["/v1/messages"]
+            TRANS["Anthropic → OpenAI<br/>协议翻译层"]
+        end
+
+        subgraph CORE["核心引擎"]
+            CLASS["🧩 意图分类器<br/>Stage-1: O(1) 正则<br/>Stage-2: MLX Qwen 9B"]
+            ROUTE["🔀 路由决策引擎"]
+            FALLBACK["Fallback Chain<br/>普通路由 (80%)"]
+            MOA["MoA 四阶段融合<br/>复杂请求 (20%)"]
+        end
+    end
+
+    subgraph UPSTREAM["上游模型层"]
+        subgraph CLOUD["云端模型"]
+            DS["DeepSeek V4 Pro<br/>coding 主力"]
+            GEM["Gemini 2.5 Pro<br/>reasoning / Judge"]
+            GLM["GLM 5.2<br/>chinese / Critic"]
+            MM["MiniMax M3<br/>creative / Panel"]
+        end
+        subgraph LOCAL["本地模型 (零成本零延迟)"]
+            OLL["Ollama :11434<br/>gemma:2b · llama3.2:1b<br/>gemma4-12b"]
+            MLX["MLX :8080 (Metal)<br/>Qwen3.5-9B · Qwen VL"]
+        end
+    end
+
+    Hermes --> OAI
+    Cursor --> OAI
+    CC --> OAI
+    Claude --> ANTHRO
+    ANTHRO --> TRANS
+    OAI --> CLASS
+    TRANS --> CLASS
+    CLASS --> ROUTE
+    ROUTE --> FALLBACK
+    ROUTE --> MOA
+    FALLBACK --> CLOUD
+    FALLBACK --> LOCAL
+    MOA --> CLOUD
+    MOA --> LOCAL

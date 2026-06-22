@@ -65,6 +65,7 @@ async def shutdown_event():
     await close_http_client()
 
 @app.get("/v1/models")
+@app.get("/models")
 async def list_models():
     models_list = [
         {"id": "model-fusion", "object": "model", "owned_by": "openrouter-fusion", "permission": []},
@@ -93,6 +94,54 @@ async def list_models():
     ]
     return JSONResponse(content={"object": "list", "data": models_list})
 
+def normalize_messages(messages: list) -> list:
+    normalized = []
+    for msg in messages:
+        role = msg.get("role")
+        if role == "developer":
+            role = "system"
+            
+        content = msg.get("content")
+        if isinstance(content, list):
+            has_img = False
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "image_url":
+                    has_img = True
+                    break
+            
+            if has_img:
+                new_content = []
+                for part in content:
+                    if isinstance(part, dict):
+                        ptype = part.get("type")
+                        if ptype in ["input_text", "text"]:
+                            new_content.append({"type": "text", "text": part.get("text", "")})
+                        else:
+                            new_content.append(part)
+                    else:
+                        new_content.append(part)
+                content = new_content
+            else:
+                text_parts = []
+                for part in content:
+                    if isinstance(part, dict):
+                        ptype = part.get("type")
+                        if ptype in ["input_text", "text"]:
+                            text_parts.append(part.get("text", ""))
+                        elif "text" in part:
+                            text_parts.append(part.get("text", ""))
+                    elif isinstance(part, str):
+                        text_parts.append(part)
+                content = "".join(text_parts)
+                
+        new_msg = {"role": role, "content": content}
+        if "tool_calls" in msg:
+            new_msg["tool_calls"] = msg["tool_calls"]
+        if "tool_call_id" in msg:
+            new_msg["tool_call_id"] = msg["tool_call_id"]
+        normalized.append(new_msg)
+    return normalized
+
 @app.api_route("/v1/responses", methods=["POST"])
 @app.api_route("/responses", methods=["POST"])  # CC-Switch strips the /v1 prefix
 async def responses_api(request: Request):
@@ -120,6 +169,8 @@ async def responses_api(request: Request):
         messages = list(user_input)
     else:
         messages = [{"role": "user", "content": str(user_input)}]
+
+    messages = normalize_messages(messages)
 
     # Inject instructions as system message
     instructions = body.get("instructions", "")
@@ -156,12 +207,50 @@ async def responses_api(request: Request):
 
         if stream:
             async def response_stream():
+                resp_id = f"resp_{uuid.uuid4().hex}"
+                item_id = f"msg_{uuid.uuid4().hex}"
+                
+                # 1. Emit response.created
+                yield f"event: response.created\ndata: {json.dumps({'type': 'response.created', 'response': {'id': resp_id, 'object': 'response', 'status': 'in_progress'}})}\n\n"
+                
+                # 2. Translate OpenAI chunks
                 async for chunk in result:
-                    if isinstance(chunk, str):
-                        # Map SSE chat completion chunks to Responses API format
-                        yield chunk
+                    if isinstance(chunk, bytes):
+                        line = chunk.decode("utf-8")
                     else:
-                        yield chunk
+                        line = chunk
+                    
+                    if not line.strip():
+                        continue
+                    
+                    for subline in line.split("\n"):
+                        subline = subline.strip()
+                        if not subline or subline == "data: [DONE]":
+                            continue
+                        if subline.startswith("data: "):
+                            try:
+                                data_json = json.loads(subline[6:].strip())
+                                choices = data_json.get("choices", [])
+                                if choices:
+                                    delta = choices[0].get("delta", {})
+                                    content = delta.get("content", "")
+                                    if content:
+                                        payload = {
+                                            "type": "response.output_text.delta",
+                                            "item_id": item_id,
+                                            "output_index": 0,
+                                            "content_index": 0,
+                                            "delta": content
+                                        }
+                                        yield f"event: response.output_text.delta\ndata: {json.dumps(payload)}\n\n"
+                            except Exception as ex:
+                                logger.error(f"Error parsing Responses API chunk: {ex}")
+                
+                # 3. Emit response.output_text.done
+                yield f"event: response.output_text.done\ndata: {json.dumps({'type': 'response.output_text.done', 'item_id': item_id, 'output_index': 0, 'content_index': 0})}\n\n"
+                
+                # 4. Emit response.completed
+                yield f"event: response.completed\ndata: {json.dumps({'type': 'response.completed', 'response': {'id': resp_id, 'object': 'response', 'status': 'completed'}})}\n\n"
             return StreamingResponse(
                 response_stream(),
                 media_type="text/event-stream",
@@ -185,6 +274,7 @@ async def responses_api(request: Request):
 
 
 @app.post("/v1/chat/completions")
+@app.post("/chat/completions")
 async def chat_completions(request: Request):
     async with global_semaphore:
         try:
@@ -194,6 +284,7 @@ async def chat_completions(request: Request):
 
         model = body.get("model", "gemini-2.5-pro")
         messages = body.get("messages", [])
+        messages = normalize_messages(messages)
         stream = body.get("stream", False)
         tools = body.get("tools", None)
         
@@ -311,6 +402,7 @@ async def chat_completions(request: Request):
             )
 
 @app.post("/v1/messages")
+@app.post("/messages")
 async def anthropic_messages(request: Request):
     """
     Anthropic-compatible Messages API.

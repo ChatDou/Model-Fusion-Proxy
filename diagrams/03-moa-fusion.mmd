@@ -1,0 +1,56 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#FFE800', 'primaryTextColor': '#000', 'primaryBorderColor': '#000', 'lineColor': '#000', 'secondaryColor': '#FF3D00', 'tertiaryColor': '#fff', 'fontSize': '15px'}}}%%
+graph TB
+    START["🔮 复杂请求触发 MoA 融合"] --> P1
+
+    subgraph P1_BOX["Phase 1: Panel Drafting (并行 · 60s 硬超时)"]
+        direction LR
+        P1_QWEN["Qwen 9B MLX<br/>本地 · 零成本"]
+        P1_DS["DeepSeek V4 Pro<br/>云端 · 代码专家"]
+        P1_GLM["GLM 5.2<br/>云端 · 中文专家"]
+        P1_MM["MiniMax M3<br/>云端 · 创意专家"]
+        P1 --> P1_QWEN & P1_DS & P1_GLM & P1_MM
+    end
+
+    P1_QWEN -->|"✅ / ❌"| MERGE1["聚合草稿<br/>空响应自动跳过"]
+    P1_DS -->|"✅ / ❌"| MERGE1
+    P1_GLM -->|"✅ / ❌"| MERGE1
+    P1_MM -->|"✅ / ❌"| MERGE1
+
+    MERGE1 --> CHECK1{"至少一个<br/>草稿成功?"}
+    CHECK1 -->|"❌ 全失败"| EMPTY["兜底提示词"]
+    CHECK1 -->|"✅"| P2
+
+    subgraph P2_BOX["Phase 2: Draft Synthesis"]
+        P2["Judge: Gemini 2.5 Pro<br/>'综合所有草稿，整合最佳部分，<br/>解决矛盾，输出统一草案。'"]
+        P2_FAIL["🛡️ Fallback: DeepSeek V4 Pro"]
+        P2 -->|"失败"| P2_FAIL
+        P2 -->|"成功"| DRAFT["📝 综合草案"]
+        P2_FAIL --> DRAFT
+    end
+
+    DRAFT --> P3
+
+    subgraph P3_BOX["Phase 3: Critic Review (并行 + 本地校验)"]
+        direction LR
+        P3_DS["DeepSeek V4 Pro<br/>代码正确性审查"]
+        P3_GLM["GLM 5.2<br/>逻辑/语义审查"]
+        P3_AST["🔬 本地 AST 编译校验<br/>ast.parse() 提取 Python 代码块<br/>SyntaxError → 注入批评意见<br/>100% 杜绝幻觉语法错误"]
+        P3 --> P3_DS & P3_GLM
+        DRAFT --> P3_AST
+    end
+
+    P3_DS --> MERGE2["汇总批评意见"]
+    P3_GLM --> MERGE2
+    P3_AST --> MERGE2
+
+    MERGE2 --> P4
+
+    subgraph P4_BOX["Phase 4: Final Refinement"]
+        P4["Judge: Gemini 2.5 Pro<br/>+ 分类感知提示词增强<br/>'你是最终裁判与精修引擎。<br/>目标: 媲美 Claude Fable 5。<br/>不要提到任何模型的名字。'"]
+        P4_FAIL["🛡️ Fallback: DeepSeek V4 Pro"]
+        P4 -->|"失败"| P4_FAIL
+        P4 -->|"成功"| FINAL["🎯 Fable 5 级最终答案"]
+        P4_FAIL --> FINAL
+    end
+
+    EMPTY --> P2

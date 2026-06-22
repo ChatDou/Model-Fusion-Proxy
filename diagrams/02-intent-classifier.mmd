@@ -1,0 +1,34 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#FFE800', 'primaryTextColor': '#000', 'primaryBorderColor': '#000', 'lineColor': '#000', 'secondaryColor': '#FF3D00', 'tertiaryColor': '#fff', 'fontSize': '15px'}}}%%
+graph TB
+    START["📩 用户消息"] --> T1{"有 tools 参数?"}
+    T1 -->|"✅ 是"| AGENT["agentic_tool_calling<br/>→ DeepSeek V4 Pro"]
+    T1 -->|"❌ 否"| T2{"有 image_url?"}
+    T2 -->|"✅ 是"| VISION["vision<br/>→ Gemini 2.5 Pro"]
+    T2 -->|"❌ 否"| S1
+
+    subgraph S1_BOX["Stage 1: O(1) 正则快速路径 (纳秒级 · 零成本)"]
+        S1["预编译正则匹配"]
+        CODING["CODING_RE<br/>def/class/function/sql/database"]
+        REASON["REASONING_RE<br/>solve/math/proof/architecture"]
+        CREAT["CREATIVE_RE<br/>story/poem/创意/小说"]
+        CHIN["CHINESE_RE<br/>公文/古诗/政策/润色"]
+        SCORE["计分: 每类独立计数<br/>max_score > 0 → 直接返回"]
+        S1 --> CODING & REASON & CREAT & CHIN
+        CODING & REASON & CREAT & CHIN --> SCORE
+    end
+
+    SCORE -->|"命中"| OUT_S1["✅ 返回分类结果"]
+    SCORE -->|"未命中 (全 0)"| S2
+
+    subgraph S2_BOX["Stage 2: 本地 MLX 语义分类 (200-500ms · 零成本)"]
+        S2["调用 Qwen3.5-9B-MLX"]
+        PROMPT["System: '你是 LLM 路由代理的分类器...'<br/>输出: {intent: coding|reasoning|...}"]
+        PARSE["解析 JSON 响应"]
+        S2 --> PROMPT --> PARSE
+    end
+
+    PARSE -->|"成功"| OUT_S2["✅ 返回语义分类"]
+    PARSE -->|"超时 2s / 失败"| FALLBACK
+
+    FALLBACK["🛡️ 静默降级<br/>→ general"]
+    FALLBACK --> OUT_FB["general<br/>(最长 fallback 链兜底)"]
