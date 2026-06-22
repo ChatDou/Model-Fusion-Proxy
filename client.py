@@ -363,6 +363,6 @@ async def make_api_call(
             await asyncio.sleep(sleep_time)
 
         raise ModelAPIError("Failed after maximum retries", 500)
-    except Exception as e:
+    except BaseException as e:
         release_sem()
         raise e

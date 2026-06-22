@@ -23,7 +23,7 @@ local:
     base_url: "http://127.0.0.1:8080/v1"  # mlx_lm.server default port
     api_key: "mlx"    # MLX server doesn't require auth locally
     models:
-      qwen35_9b: "Qwen3.5-9B-MLX-4bit"  # MLX model name/path — customize if needed
+      qwen35_9b: "/Users/douyuan/Documents/Codex/2026-06-04/gemma-4-12b-it-abliterated-gguf/work/models/omlx/Qwen3.5-9B-MLX-4bit"
       qwen35_vl: "dealignai/Qwen3.5-VL-9B-4bit-MLX-CRACK"  # Vision model (future)
     # MLX warm-up: mock inference on startup to pre-compile Metal kernels
     warmup: true
