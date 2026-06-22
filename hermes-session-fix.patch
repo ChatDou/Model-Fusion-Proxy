@@ -1,0 +1,106 @@
+From ee3e3876a8c51cb8f9fb4d813e0cef96e33fcb34 Mon Sep 17 00:00:00 2001
+From: douyuan163-git <douyuan163@gmail.com>
+Date: Mon, 22 Jun 2026 11:26:38 +0800
+Subject: [PATCH] fix(sessions): scope latest-descendant endpoint to active
+ profile
+
+- _session_latest_descendant() now accepts profile param and opens the
+  correct state.db via _open_session_db_for_profile(profile)
+- /api/sessions/{id}/latest-descendant route forwards profile query param
+- _resolve_chat_argv internal call forwards active profile
+- getSessionLatestDescendant in api.ts accepts profile = getManagementProfile()
+  and appends it via appendProfileParam()
+- ChatPage.tsx passes scopedProfile to getSessionLatestDescendant and adds
+  it to the useEffect dependency array
+
+Fixes 404 Session not found when resuming past conversations from
+custom profiles in the Hermes dashboard.
+---
+ hermes_cli/web_server.py   | 10 +++++-----
+ web/src/lib/api.ts         |  4 ++--
+ web/src/pages/ChatPage.tsx |  4 ++--
+ 3 files changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/hermes_cli/web_server.py b/hermes_cli/web_server.py
+index 398e61772..12d787995 100644
+--- a/hermes_cli/web_server.py
++++ b/hermes_cli/web_server.py
+@@ -7088,7 +7088,7 @@ async def cancel_oauth_session(
+ 
+ 
+ 
+-def _session_latest_descendant(session_id: str):
++def _session_latest_descendant(session_id: str, profile: Optional[str] = None):
+     """Resolve a session id to the newest child leaf session.
+ 
+     /model may create child sessions. Dashboard refresh should continue the
+@@ -7107,7 +7107,7 @@ def _session_latest_descendant(session_id: str):
+             except Exception:
+                 return None
+ 
+-    db = SessionDB()
++    db = _open_session_db_for_profile(profile)
+     try:
+         sid = db.resolve_session_id(session_id)
+         if not sid or not db.get_session(sid):
+@@ -7336,8 +7336,8 @@ async def get_session_detail(session_id: str, profile: Optional[str] = None):
+ 
+ 
+ @app.get("/api/sessions/{session_id}/latest-descendant")
+-async def get_session_latest_descendant(session_id: str):
+-    latest, path = _session_latest_descendant(session_id)
++async def get_session_latest_descendant(session_id: str, profile: Optional[str] = None):
++    latest, path = _session_latest_descendant(session_id, profile=profile)
+     if not latest:
+         raise HTTPException(status_code=404, detail="Session not found")
+     return {
+@@ -11218,7 +11218,7 @@ def _resolve_chat_argv(
+         env["HERMES_HOME"] = str(profile_dir)
+ 
+     if resume:
+-        latest_resume, _latest_path = _session_latest_descendant(resume)
++        latest_resume, _latest_path = _session_latest_descendant(resume, profile=profile)
+         if latest_resume:
+             resume = latest_resume
+         env["HERMES_TUI_RESUME"] = resume
+diff --git a/web/src/lib/api.ts b/web/src/lib/api.ts
+index ba8989241..272923089 100644
+--- a/web/src/lib/api.ts
++++ b/web/src/lib/api.ts
+@@ -360,9 +360,9 @@ export const api = {
+     fetchJSON<SessionMessagesResponse>(
+       appendProfileParam(`/api/sessions/${encodeURIComponent(id)}/messages`, profile),
+     ),
+-  getSessionLatestDescendant: (id: string) =>
++  getSessionLatestDescendant: (id: string, profile = getManagementProfile()) =>
+     fetchJSON<SessionLatestDescendantResponse>(
+-      `/api/sessions/${encodeURIComponent(id)}/latest-descendant`,
++      appendProfileParam(`/api/sessions/${encodeURIComponent(id)}/latest-descendant`, profile),
+     ),
+   deleteSession: (id: string, profile = getManagementProfile()) =>
+     fetchJSON<{ ok: boolean }>(
+diff --git a/web/src/pages/ChatPage.tsx b/web/src/pages/ChatPage.tsx
+index 2a135ed1a..fd03137d9 100644
+--- a/web/src/pages/ChatPage.tsx
++++ b/web/src/pages/ChatPage.tsx
+@@ -215,7 +215,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
+     let cancelled = false;
+ 
+     api
+-      .getSessionLatestDescendant(resumeParam)
++      .getSessionLatestDescendant(resumeParam, scopedProfile || undefined)
+       .then((res) => {
+         if (cancelled || !res.session_id || res.session_id === resumeParam) {
+           return;
+@@ -232,7 +232,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
+     return () => {
+       cancelled = true;
+     };
+-  }, [resumeParam, searchParams, setSearchParams]);
++  }, [resumeParam, searchParams, setSearchParams, scopedProfile]);
+ 
+   useEffect(() => {
+     const mql = window.matchMedia("(max-width: 1023px)");
+-- 
+2.53.0
+
