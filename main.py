@@ -209,47 +209,146 @@ async def responses_api(request: Request):
             async def response_stream():
                 resp_id = f"resp_{uuid.uuid4().hex}"
                 item_id = f"msg_{uuid.uuid4().hex}"
-                
+
+                # Track tool-call state across chunks. OpenAI streams tool_calls
+                # incrementally: the first delta carries {index, id, function.name};
+                # subsequent deltas carry function.arguments fragments. We must
+                # group them by index and emit Responses-API-shaped events.
+                # Map: tool_index -> {"id": str, "name": str, "args_buf": str, "item_id": str, "started": bool}
+                open_tool_items: dict[int, dict] = {}
+                # output_index counter: text lives at 0; tool calls get 1, 2, 3...
+                next_output_index = 1
+
                 # 1. Emit response.created
                 yield f"event: response.created\ndata: {json.dumps({'type': 'response.created', 'response': {'id': resp_id, 'object': 'response', 'status': 'in_progress'}})}\n\n"
-                
-                # 2. Translate OpenAI chunks
+
+                # 2. Translate OpenAI chat-completion chunks → Responses API events
                 async for chunk in result:
                     if isinstance(chunk, bytes):
                         line = chunk.decode("utf-8")
                     else:
                         line = chunk
-                    
+
                     if not line.strip():
                         continue
-                    
+
                     for subline in line.split("\n"):
                         subline = subline.strip()
                         if not subline or subline == "data: [DONE]":
                             continue
-                        if subline.startswith("data: "):
-                            try:
-                                data_json = json.loads(subline[6:].strip())
-                                choices = data_json.get("choices", [])
-                                if choices:
-                                    delta = choices[0].get("delta", {})
-                                    content = delta.get("content", "")
-                                    if content:
-                                        payload = {
-                                            "type": "response.output_text.delta",
-                                            "item_id": item_id,
-                                            "output_index": 0,
-                                            "content_index": 0,
-                                            "delta": content
+                        if not subline.startswith("data: "):
+                            continue
+                        try:
+                            data_json = json.loads(subline[6:].strip())
+                        except Exception:
+                            continue
+                        try:
+                            choices = data_json.get("choices", [])
+                            if not choices:
+                                continue
+                            delta = choices[0].get("delta", {})
+
+                            # ── 2a. Text content deltas ────────────────────
+                            content = delta.get("content", "") or delta.get("reasoning", "")
+                            if content:
+                                payload = {
+                                    "type": "response.output_text.delta",
+                                    "item_id": item_id,
+                                    "output_index": 0,
+                                    "content_index": 0,
+                                    "delta": content,
+                                }
+                                yield f"event: response.output_text.delta\ndata: {json.dumps(payload)}\n\n"
+
+                            # ── 2b. Tool-call deltas ───────────────────────
+                            # OpenAI sends tool_calls as a list even when only one
+                            # is active; each element has an `index` to identify
+                            # which tool call it belongs to.
+                            tool_calls = delta.get("tool_calls")
+                            if tool_calls:
+                                for tc in tool_calls:
+                                    tc_idx = tc.get("index", 0)
+                                    tc_id = tc.get("id")
+                                    tc_func = tc.get("function", {}) or {}
+                                    tc_name = tc_func.get("name")
+                                    tc_args_frag = tc_func.get("arguments", "")
+
+                                    # First sighting of this tool index → emit
+                                    # output_item.added + function_call_arguments.delta
+                                    if tc_idx not in open_tool_items:
+                                        call_item_id = f"fc_{uuid.uuid4().hex[:24]}"
+                                        open_tool_items[tc_idx] = {
+                                            "id": tc_id or f"call_{uuid.uuid4().hex[:24]}",
+                                            "name": tc_name or "",
+                                            "args_buf": "",
+                                            "item_id": call_item_id,
+                                            "output_index": next_output_index,
+                                            "started": False,
                                         }
-                                        yield f"event: response.output_text.delta\ndata: {json.dumps(payload)}\n\n"
-                            except Exception as ex:
-                                logger.error(f"Error parsing Responses API chunk: {ex}")
-                
-                # 3. Emit response.output_text.done
+                                        next_output_index += 1
+
+                                    entry = open_tool_items[tc_idx]
+
+                                    # If we now have a name/id and haven't started,
+                                    # emit the output_item.added event.
+                                    if not entry["started"] and (entry["name"] or tc_id):
+                                        entry["started"] = True
+                                        if tc_id:
+                                            entry["id"] = tc_id
+                                        if tc_name:
+                                            entry["name"] = tc_name
+                                        added_payload = {
+                                            "type": "response.output_item.added",
+                                            "output_index": entry["output_index"],
+                                            "item": {
+                                                "type": "function_call",
+                                                "id": entry["id"],
+                                                "call_id": entry["id"],
+                                                "name": entry["name"],
+                                                "arguments": "",
+                                            },
+                                        }
+                                        yield f"event: response.output_item.added\ndata: {json.dumps(added_payload)}\n\n"
+
+                                    # Stream argument fragments
+                                    if tc_args_frag:
+                                        entry["args_buf"] += tc_args_frag
+                                        args_payload = {
+                                            "type": "response.function_call_arguments.delta",
+                                            "item_id": entry["item_id"],
+                                            "output_index": entry["output_index"],
+                                            "delta": tc_args_frag,
+                                        }
+                                        yield f"event: response.function_call_arguments.delta\ndata: {json.dumps(args_payload)}\n\n"
+                        except Exception as ex:
+                            logger.error(f"Error parsing Responses API chunk: {ex}")
+
+                # 3. Close any open tool-call items (arguments.done + output_item.done)
+                for tc_idx, entry in open_tool_items.items():
+                    done_args_payload = {
+                        "type": "response.function_call_arguments.done",
+                        "item_id": entry["item_id"],
+                        "output_index": entry["output_index"],
+                        "arguments": entry["args_buf"],
+                    }
+                    yield f"event: response.function_call_arguments.done\ndata: {json.dumps(done_args_payload)}\n\n"
+                    item_done_payload = {
+                        "type": "response.output_item.done",
+                        "output_index": entry["output_index"],
+                        "item": {
+                            "type": "function_call",
+                            "id": entry["id"],
+                            "call_id": entry["id"],
+                            "name": entry["name"],
+                            "arguments": entry["args_buf"],
+                        },
+                    }
+                    yield f"event: response.output_item.done\ndata: {json.dumps(item_done_payload)}\n\n"
+
+                # 4. Emit response.output_text.done (text block at index 0)
                 yield f"event: response.output_text.done\ndata: {json.dumps({'type': 'response.output_text.done', 'item_id': item_id, 'output_index': 0, 'content_index': 0})}\n\n"
-                
-                # 4. Emit response.completed
+
+                # 5. Emit response.completed
                 yield f"event: response.completed\ndata: {json.dumps({'type': 'response.completed', 'response': {'id': resp_id, 'object': 'response', 'status': 'completed'}})}\n\n"
             return StreamingResponse(
                 response_stream(),
@@ -257,13 +356,38 @@ async def responses_api(request: Request):
                 headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
             )
         else:
-            # Extract content from chat completions response
-            content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            # Non-streaming: extract content AND tool_calls from chat completions
+            choice = (result.get("choices") or [{}])[0]
+            message = choice.get("message", {})
+            content = message.get("content", "") or ""
+            tool_calls = message.get("tool_calls", None)
+
+            output = []
+            if content:
+                output.append({"type": "message", "role": "assistant", "content": content})
+            if tool_calls:
+                # Each tool_call becomes a function_call item in the Responses API
+                for tc in tool_calls:
+                    tc_func = tc.get("function", {})
+                    try:
+                        args_str = tc_func.get("arguments", "")
+                        # arguments may already be a JSON string; validate it parses
+                        json.loads(args_str)
+                    except Exception:
+                        args_str = "{}"
+                    output.append({
+                        "type": "function_call",
+                        "id": tc.get("id", f"call_{uuid.uuid4().hex[:24]}"),
+                        "call_id": tc.get("id", f"call_{uuid.uuid4().hex[:24]}"),
+                        "name": tc_func.get("name", ""),
+                        "arguments": args_str,
+                    })
+
             return JSONResponse(content={
                 "id": result.get("id", f"resp_{uuid.uuid4().hex}"),
                 "object": "response",
                 "model": model,
-                "output": [{"type": "message", "role": "assistant", "content": content}],
+                "output": output,
                 "usage": result.get("usage", {})
             })
     except ModelAPIError as e:
@@ -282,7 +406,7 @@ async def chat_completions(request: Request):
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid JSON body")
 
-        model = body.get("model", "gemini-2.5-pro")
+        model = body.get("model", "deepseek-chat")
         messages = body.get("messages", [])
         messages = normalize_messages(messages)
         stream = body.get("stream", False)
@@ -417,7 +541,7 @@ async def anthropic_messages(request: Request):
         anthropic_messages = body.get("messages", [])
         anthropic_system = body.get("system", "")
         stream = body.get("stream", False)
-        model = body.get("model", "gemini-2.5-pro")
+        model = body.get("model", "deepseek-chat")
         tools = body.get("tools", None)
         
         logger.info(f"Received Anthropic request for model '{model}' | Messages: {len(anthropic_messages)} | Stream: {stream} | Tools: {bool(tools)}")
@@ -580,7 +704,7 @@ async def anthropic_messages(request: Request):
                                             delta = choices[0].get("delta", {})
                                             
                                             # Translate content block text updates
-                                            content = delta.get("content", "")
+                                            content = delta.get("content", "") or delta.get("reasoning", "")
                                             if content:
                                                 if not has_started_text_block:
                                                     # Text block resides at index 0
